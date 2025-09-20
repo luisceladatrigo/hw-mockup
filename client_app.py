@@ -419,7 +419,48 @@ def api_trace() -> Response:
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             if 200 <= resp.status < 300:
+    return jsonify({"ok": True})
+
+
+@app.post("/api/mark")
+def api_mark() -> Response:
+    """Reenvía una marca (on/off) al hw_server del armario seleccionado.
+
+    Entrada: {"cabinet": "A", "id": "m1"?, "row":int, "col":int, "color":"#RRGGBB"|"red", "on":bool}
+    """
+    payload = request.get_json(silent=True) or {}
+    cabinet = str(payload.get("cabinet") or "").strip()
+    if not cabinet:
+        return jsonify({"error": "cabinet requerido"}), 400
+    meta = CABINETS.get(cabinet)
+    if not meta:
+        return jsonify({"error": "armario no registrado"}), 404
+    body = {
+        "id": str(payload.get("id") or "").strip() or "default",
+        "row": payload.get("row"),
+        "col": payload.get("col"),
+        "color": payload.get("color"),
+        "on": bool(payload.get("on", True)),
+    }
+    url = meta["url"] + "/api/mark"
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if 200 <= resp.status < 300:
                 return jsonify({"ok": True})
+            text = resp.read().decode("utf-8", errors="ignore")
+            return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
+    except urllib.error.HTTPError as he:
+        try:
+            text = he.read().decode("utf-8", errors="ignore")
+        except Exception:
+            text = str(he)
+        return jsonify({"error": f"HTTPError {he.code}: {text}"}), 502
+    except urllib.error.URLError as ue:
+        return jsonify({"error": f"no se pudo conectar al hw_server: {ue.reason}"}), 502
+    except Exception as ex:
+        return jsonify({"error": f"fallo al reenviar: {ex}"}), 500
             text = resp.read().decode("utf-8", errors="ignore")
             return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
     except urllib.error.HTTPError as he:

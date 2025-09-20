@@ -85,37 +85,46 @@ ROW_LEN = max(1, _env_int("ROW_LEN", 3))
 COL_LEN = max(1, _env_int("COL_LEN", 3))
 
 
-class CrosshairState:
-    """Estado de dos tiras: fila y columna.
+class MarksState:
+    """Permite múltiples marcas simultáneas.
 
-    - on: True/False (apaga/enciende ambas tiras)
-    - color: HEX #RRGGBB (mismo color para ambas tiras por esencia del sistema)
-    - row: índice activo de tira de filas (o None)
-    - col: índice activo de tira de columnas (o None)
-    - ts: timestamp Unix de última actualización
+    Cada marca representa una coordenada con un color común para tiras
+    laterales (fila izquierda y columna superior) y una cruz en la intersección.
+    Estructura: marks: dict[id -> {row:int, col:int, color:str, ts:int}]
     """
 
     def __init__(self) -> None:
-        self.on: bool = False
-        self.color: str = "#000000"
-        self.row: Optional[int] = None
-        self.col: Optional[int] = None
+        self.marks: Dict[str, Dict[str, Any]] = {}
         self.ts: int = int(time.time())
+
+    def set_mark(self, mid: str, row: int, col: int, color: str) -> None:
+        self.marks[mid] = {"row": int(row), "col": int(col), "color": color, "ts": int(time.time())}
+        self.ts = int(time.time())
+
+    def del_mark(self, mid: str) -> bool:
+        ok = self.marks.pop(mid, None) is not None
+        if ok:
+            self.ts = int(time.time())
+        return ok
+
+    def clear(self) -> None:
+        self.marks.clear()
+        self.ts = int(time.time())
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "cabinet_id": CABINET_ID,
             "row_len": int(ROW_LEN),
             "col_len": int(COL_LEN),
-            "row": (int(self.row) if self.row is not None else None),
-            "col": (int(self.col) if self.col is not None else None),
-            "on": bool(self.on),
-            "color": self.color,
+            "marks": [
+                {"id": k, "row": v["row"], "col": v["col"], "color": v["color"], "ts": v["ts"]}
+                for k, v in sorted(self.marks.items(), key=lambda kv: kv[1]["ts"])  # por tiempo
+            ],
             "ts": int(self.ts),
         }
 
 
-STATE = CrosshairState()
+STATE = MarksState()
 
 
 def normalize_color(value: str) -> Optional[str]:
@@ -174,7 +183,7 @@ def home() -> Response:
       <script>
         function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
-        function drawBoard(svg, rows, cols, selRow, selCol, color) {
+        function drawBoard(svg, rows, cols, marks) {
           const cell = 60;          // tamaño de casillero
           const pad = 20;           // margen
           const w = cols*cell + pad*2;
@@ -212,43 +221,49 @@ def home() -> Response:
             svg.appendChild(hl);
           }
 
-          // Segmentos iluminados (tiras): fila y columna seleccionadas
-          if (color && selRow != null) {
-            const y = pad + selRow*cell + cell/2;
-            const seg = document.createElementNS('http://www.w3.org/2000/svg','line');
-            seg.setAttribute('x1', String(pad)); seg.setAttribute('y1', String(y));
-            seg.setAttribute('x2', String(w-pad)); seg.setAttribute('y2', String(y));
-            seg.setAttribute('stroke', color);
-            seg.setAttribute('stroke-width', '6');
-            seg.setAttribute('stroke-linecap','round');
-            svg.appendChild(seg);
-          }
-          if (color && selCol != null) {
-            const x = pad + selCol*cell + cell/2;
-            const seg = document.createElementNS('http://www.w3.org/2000/svg','line');
-            seg.setAttribute('x1', String(x)); seg.setAttribute('y1', String(pad));
-            seg.setAttribute('x2', String(x)); seg.setAttribute('y2', String(h-pad));
-            seg.setAttribute('stroke', color);
-            seg.setAttribute('stroke-width', '6');
-            seg.setAttribute('stroke-linecap','round');
-            svg.appendChild(seg);
-          }
-
-          // Cruz en casillero (row,col)
-          if (color && selRow != null && selCol != null) {
-            const cx = pad + selCol*cell + cell/2;
-            const cy = pad + selRow*cell + cell/2;
+          // Dibujar cada marca: segmentos laterales y cruz en intersección
+          (marks||[]).forEach(function(m){
+            const row = m.row, col = m.col, color = String(m.color||'#00ff00');
+            if (!(Number.isInteger(row) && Number.isInteger(col))) return;
+            if (row<0 || row>=rows || col<0 || col>=cols) return;
+            // Segmento superior (encima de la columna)
+            const cx = pad + col*cell + cell/2;
+            const yTop = pad - 8;
+            const segTop = document.createElementNS('http://www.w3.org/2000/svg','line');
+            segTop.setAttribute('x1', String(cx - cell*0.3));
+            segTop.setAttribute('y1', String(yTop));
+            segTop.setAttribute('x2', String(cx + cell*0.3));
+            segTop.setAttribute('y2', String(yTop));
+            segTop.setAttribute('stroke', color);
+            segTop.setAttribute('stroke-width', '6');
+            segTop.setAttribute('stroke-linecap','round');
+            svg.appendChild(segTop);
+            // Segmento lateral izquierdo (a la izquierda de la fila)
+            const cy = pad + row*cell + cell/2;
+            const xLeft = pad - 8;
+            const segLeft = document.createElementNS('http://www.w3.org/2000/svg','line');
+            segLeft.setAttribute('x1', String(xLeft));
+            segLeft.setAttribute('y1', String(cy - cell*0.3));
+            segLeft.setAttribute('x2', String(xLeft));
+            segLeft.setAttribute('y2', String(cy + cell*0.3));
+            segLeft.setAttribute('stroke', color);
+            segLeft.setAttribute('stroke-width', '6');
+            segLeft.setAttribute('stroke-linecap','round');
+            svg.appendChild(segLeft);
+            // Cruz en casillero
+            const cxc = pad + col*cell + cell/2;
+            const cyc = pad + row*cell + cell/2;
             const d = cell*0.45;
             const l1 = document.createElementNS('http://www.w3.org/2000/svg','line');
-            l1.setAttribute('x1', String(cx-d)); l1.setAttribute('y1', String(cy-d));
-            l1.setAttribute('x2', String(cx+d)); l1.setAttribute('y2', String(cy+d));
+            l1.setAttribute('x1', String(cxc-d)); l1.setAttribute('y1', String(cyc-d));
+            l1.setAttribute('x2', String(cxc+d)); l1.setAttribute('y2', String(cyc+d));
             l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '5'); l1.setAttribute('stroke-linecap','round');
             const l2 = document.createElementNS('http://www.w3.org/2000/svg','line');
-            l2.setAttribute('x1', String(cx+d)); l2.setAttribute('y1', String(cy-d));
-            l2.setAttribute('x2', String(cx-d)); l2.setAttribute('y2', String(cy+d));
+            l2.setAttribute('x1', String(cxc+d)); l2.setAttribute('y1', String(cyc-d));
+            l2.setAttribute('x2', String(cxc-d)); l2.setAttribute('y2', String(cyc+d));
             l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '5'); l2.setAttribute('stroke-linecap','round');
             svg.appendChild(l1); svg.appendChild(l2);
-          }
+          });
         }
         async function refresh() {{
           try {{
@@ -256,10 +271,7 @@ def home() -> Response:
             const data = await res.json();
             const info = document.getElementById('info');
             const svg = document.getElementById('board');
-            const selRow = (Number.isInteger(data.row) ? data.row : null);
-            const selCol = (Number.isInteger(data.col) ? data.col : null);
-            const color = (data.on ? String(data.color||'#00ff00') : null);
-            drawBoard(svg, data.row_len, data.col_len, selRow, selCol, color);
+            drawBoard(svg, data.row_len, data.col_len, data.marks||[]);
             info.textContent = 'cabinet=' + data.cabinet_id + ' | on=' + (!!data.on) + ' | color=' + (data.color||'-') + ' | row=' + (data.row==null?'(none)':data.row) + ' | col=' + (data.col==null?'(none)':data.col) + ' | ts=' + (data.ts||'-');
           }} catch (e) {{ /* ignorar errores */ }}
         }}
@@ -275,11 +287,11 @@ def home() -> Response:
 
 @app.post("/api/led")
 def api_led() -> Response:
-    """Compatibilidad: ajustar encendido/apagado y color global (sin coordenadas).
+    """Compatibilidad: encender una marca 'default' o apagar todas.
 
     Entrada: {"color":"#RRGGBB"|"red", "on":true/false}
-    Si on=false: apaga ambas tiras y limpia row/col.
-    Si on=true: ajusta el color; no cambia row/col.
+    on=false: borra todas las marcas.
+    on=true: coloca/actualiza la marca "default" en (row=0,col=0).
     """
     payload = request.get_json(silent=True) or {}
     color_raw = payload.get("color")
@@ -290,26 +302,17 @@ def api_led() -> Response:
         return jsonify({"error": "color invalido (usa #RRGGBB o nombres como 'red', 'green', ...)"}), 400
     on = bool(on_raw) if isinstance(on_raw, (bool, int)) else False
 
-    STATE.on = on
-    STATE.color = color_hex if on else "#000000"
     if not on:
-        STATE.row = None
-        STATE.col = None
-    STATE.ts = int(time.time())
+        STATE.clear()
+        return jsonify({"ok": True})
+    # on=true: por compat, usar 0,0
+    STATE.set_mark("default", 0, 0, color_hex)
     return jsonify({"ok": True})
 
 
 @app.post("/api/trace")
 def api_trace() -> Response:
-    """Establece la coordenada a trazar con un color común para ambas tiras.
-
-    Entrada (JSON): {"row": int|null, "col": int|null, "on": bool, "color": "#RRGGBB"|"red"}
-    Reglas:
-    - color común para ambas tiras.
-    - on=false apaga ambas tiras y limpia row/col.
-    - row/col pueden ser null para no seleccionar esa tira.
-    - Si se proveen, deben estar en rango [0..len-1].
-    """
+    """Compat: establece/borra una única marca 'default'."""
     payload = request.get_json(silent=True) or {}
     on_raw = payload.get("on")
     color_raw = payload.get("color")
@@ -317,48 +320,55 @@ def api_trace() -> Response:
     col_raw = payload.get("col")
 
     on = bool(on_raw) if isinstance(on_raw, (bool, int)) else False
-    color_hex = normalize_color(color_raw)
-    if not color_hex and on:
-        return jsonify({"error": "color requerido y valido cuando on=true"}), 400
-
-    # Validar row/col si no son None
-    row_val: Optional[int] = None
-    col_val: Optional[int] = None
-    if row_raw is not None:
-        try:
-            row_val = int(row_raw)
-            if row_val < 0 or row_val >= ROW_LEN:
-                return jsonify({"error": f"row fuera de rango (0..{ROW_LEN-1})"}), 400
-        except Exception:
-            return jsonify({"error": "row debe ser entero o null"}), 400
-    if col_raw is not None:
-        try:
-            col_val = int(col_raw)
-            if col_val < 0 or col_val >= COL_LEN:
-                return jsonify({"error": f"col fuera de rango (0..{COL_LEN-1})"}), 400
-        except Exception:
-            return jsonify({"error": "col debe ser entero o null"}), 400
-
     if not on:
-        STATE.on = False
-        STATE.color = "#000000"
-        STATE.row = None
-        STATE.col = None
-        STATE.ts = int(time.time())
+        STATE.del_mark("default")
         return jsonify({"ok": True})
+    color_hex = normalize_color(color_raw)
+    if not color_hex:
+        return jsonify({"error": "color requerido y valido"}), 400
+    try:
+        row_val = int(row_raw)
+        col_val = int(col_raw)
+    except Exception:
+        return jsonify({"error": "row/col requeridos"}), 400
+    if not (0 <= row_val < ROW_LEN):
+        return jsonify({"error": f"row fuera de rango (0..{ROW_LEN-1})"}), 400
+    if not (0 <= col_val < COL_LEN):
+        return jsonify({"error": f"col fuera de rango (0..{COL_LEN-1})"}), 400
+    STATE.set_mark("default", row_val, col_val, color_hex)
+    return jsonify({"ok": True})
 
-    # on=true
-    STATE.on = True
-    STATE.color = color_hex or STATE.color
-    STATE.row = row_val
-    STATE.col = col_val
-    STATE.ts = int(time.time())
+
+@app.post("/api/mark")
+def api_mark() -> Response:
+    """Gestiona múltiples marcas.
+
+    Entrada: {"id":str, "row":int, "col":int, "color":"#RRGGBB"|"red", "on":bool}
+    on=true -> set/update; on=false -> delete id.
+    """
+    payload = request.get_json(silent=True) or {}
+    mid = str(payload.get("id") or "").strip() or "default"
+    on = bool(payload.get("on", True))
+    if not on:
+        STATE.del_mark(mid)
+        return jsonify({"ok": True})
+    try:
+        row = int(payload.get("row"))
+        col = int(payload.get("col"))
+    except Exception:
+        return jsonify({"error": "row/col requeridos"}), 400
+    if not (0 <= row < ROW_LEN) or not (0 <= col < COL_LEN):
+        return jsonify({"error": "row/col fuera de rango"}), 400
+    color = normalize_color(payload.get("color"))
+    if not color:
+        return jsonify({"error": "color invalido"}), 400
+    STATE.set_mark(mid, row, col, color)
     return jsonify({"ok": True})
 
 
 @app.get("/api/state")
 def api_state() -> Response:
-    """Devuelve el estado actual (cabinet, longitudes, fila, columna, on, color, ts)."""
+    """Devuelve el estado actual: tamaño del grid y lista de marcas activas."""
     return jsonify(STATE.to_dict())
 
 

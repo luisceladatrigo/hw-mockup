@@ -19,19 +19,21 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
   - Errores: `400` `{ "error": "mensaje" }` (p. ej., color inválido, índice fuera de rango).
 
 - GET `/api/state`
-  - Respuesta:
+  - Respuesta (nuevo formato con múltiples marcas):
     ```json
     {
       "cabinet_id": "A",
       "row_len": 3,
       "col_len": 3,
-      "row": 1,
-      "col": 2,
-      "on": true,
-      "color": "#00ff00",
+      "marks": [ {"id":"m1", "row":1, "col":2, "color":"#00ff00", "ts":1710000000} ],
       "ts": 1710000000
     }
     ```
+
+- POST `/api/mark`
+  - Body: `{ "id":"m1"?, "row":1, "col":2, "color":"#00ff00"|"red", "on": true|false }`
+  - Acción: `on=true` crea/actualiza marca; `on=false` elimina la marca `id`.
+  - Notas: si no se manda `id`, se usa `default`.
 
 - Compat: POST `/api/led`
   - Body: `{ "color": "#RRGGBB"|"red", "on": true|false }`
@@ -56,6 +58,10 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
 - POST `/api/trace`
   - Body: `{ "cabinet": "A", "command": { "row": 1, "col": 2, "on": true, "color": "#00ff00" } }`
   - Acción: reenvía el `command` a `A/api/trace`. Devuelve `{ "ok": true }` si el `hw_server` responde 2xx.
+
+- POST `/api/mark`
+  - Body: `{ "cabinet": "A", "id":"m1"?, "row":1, "col":2, "color":"#00ff00", "on":true }`
+  - Acción: reenvía a `A/api/mark`.
 
 ## Ejemplos curl
 
