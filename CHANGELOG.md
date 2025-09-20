@@ -3,7 +3,7 @@
 Formato basado en "Keep a Changelog" y versionado según SemVer.
 
 ## [Unreleased]
-- Esqueleto: Flask “Hello World”.
+- Cliente/Servidor simulados con Flask (cliente UI + hw_server con API y UI).
 - Documentación base (README, ROADMAP, docs/).
 
 ## [0.1.0] - 2025-09-20
