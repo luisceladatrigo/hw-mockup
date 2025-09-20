@@ -33,6 +33,11 @@ $env:CABINET_ID='B'; $env:ROW_LEN=3; $env:COL_LEN=3; $env:PORT=5002; python hw_s
 python client_app.py
 ```
 
+Persistencia de topología (cliente)
+- El cliente/orquestador guarda la topología en `topology.json` (ruta configurable por `TOPOLOGY_FILE`).
+- Al registrar armarios desde la UI o el endpoint, se valida el `hw_server` y se guarda el JSON.
+- Al iniciar `client_app.py`, se carga este archivo si existe.
+
 Variables de entorno (hw_server):
 - `CABINET_ID` (string, opcional; por defecto `CAB`).
 - `ROW_LEN` (int, opcional; por defecto `3`).

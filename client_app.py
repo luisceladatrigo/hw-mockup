@@ -25,6 +25,8 @@ Ejecución local sugerida:
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import urllib.request
 import urllib.error
 from typing import Any, Dict
@@ -34,8 +36,72 @@ from flask import Flask, jsonify, request, Response
 
 app = Flask(__name__)
 
+# Archivo de persistencia ligero (JSON) para la topología.
+TOPOLOGY_FILE = os.environ.get("TOPOLOGY_FILE", "topology.json")
+
 # Topología en memoria: id -> {url, row_len, col_len}
 CABINETS: Dict[str, Dict[str, Any]] = {}
+
+
+def load_topology(path: str = TOPOLOGY_FILE) -> None:
+    """Carga `topology.json` si existe y rellena CABINETS.
+
+    Estructura esperada:
+    {
+      "schema_version": 1,
+      "cabinets": [ {"id": "A", "url": "http://...", "row_len": 3, "col_len": 3}, ... ]
+    }
+    """
+    global CABINETS
+    if not os.path.exists(path):
+        CABINETS = {}
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        items = data.get("cabinets", []) if isinstance(data, dict) else []
+        mem: Dict[str, Dict[str, Any]] = {}
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            cid = str(it.get("id") or "").strip()
+            url = str(it.get("url") or "").strip()
+            try:
+                rlen = int(it.get("row_len", 0))
+                clen = int(it.get("col_len", 0))
+            except Exception:
+                rlen = 0; clen = 0
+            if cid and url and rlen > 0 and clen > 0 and cid not in mem:
+                mem[cid] = {"url": url, "row_len": rlen, "col_len": clen}
+        CABINETS = mem
+    except Exception:
+        CABINETS = {}
+
+
+def save_topology(path: str = TOPOLOGY_FILE) -> None:
+    """Guarda CABINETS a `topology.json` de forma atómica (best-effort)."""
+    data = {
+        "schema_version": 1,
+        "cabinets": [
+            {"id": cid, "url": meta.get("url"), "row_len": int(meta.get("row_len", 0)), "col_len": int(meta.get("col_len", 0))}
+            for cid, meta in sorted(CABINETS.items(), key=lambda kv: kv[0])
+        ],
+    }
+    try:
+        d = os.path.dirname(os.path.abspath(path)) or "."
+        os.makedirs(d, exist_ok=True)
+        # Escribir en tmp y reemplazar
+        with tempfile.NamedTemporaryFile("w", delete=False, dir=d, encoding="utf-8") as tf:
+            json.dump(data, tf, ensure_ascii=False, indent=2)
+            tmp_path = tf.name
+        os.replace(tmp_path, path)
+    except Exception:
+        # Best-effort: si falla, ignoramos para no romper la demo.
+        pass
+
+
+# Cargar topología al iniciar
+load_topology()
 
 
 @app.get("/")
@@ -265,7 +331,22 @@ def api_cabinets_add() -> Response:
     except Exception as ex:
         return jsonify({"error": f"no se pudo validar hw_server: {ex}"}), 502
     CABINETS[cid] = {"url": url.rstrip("/"), "row_len": row_len, "col_len": col_len}
+    save_topology()
     return jsonify({"ok": True, "cabinet": {"id": cid, "url": CABINETS[cid]["url"], "row_len": row_len, "col_len": col_len}})
+
+
+@app.delete("/api/cabinets/<cid>")
+def api_cabinets_delete(cid: str) -> Response:
+    """Elimina un armario registrado y guarda la topología.
+
+    Respuesta: {"ok": true} o 404 si no existe.
+    """
+    cid = str(cid or "").strip()
+    if cid in CABINETS:
+        CABINETS.pop(cid, None)
+        save_topology()
+        return jsonify({"ok": True})
+    return jsonify({"error": "armario no registrado"}), 404
 
 
 @app.post("/api/trace")
@@ -315,4 +396,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

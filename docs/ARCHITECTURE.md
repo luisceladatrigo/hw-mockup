@@ -6,6 +6,7 @@ Este proyecto incluye dos apps Flask simples para simular un flujo cliente→“
 - Cliente/Orquestador (`client_app.py`):
   - UI web responsive para registrar armarios y trazar coordenadas.
   - API propia para gestionar topología en memoria y reenviar órdenes.
+  - Persistencia ligera: guarda y carga `topology.json` (configurable con `TOPOLOGY_FILE`).
 - Servidor simulado (`hw_server.py`):
   - API + UI que muestra dos tiras (filas/columnas) y resalta índices activos.
 - Scripts (`scripts/`): tareas locales (testing, release, tooling).

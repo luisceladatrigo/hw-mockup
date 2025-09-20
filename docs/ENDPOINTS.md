@@ -43,9 +43,15 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
   - Body: `{ "id": "A", "url": "http://127.0.0.1:5001" }`
   - Acción: consulta `url/api/state` para validar y registra el armario en memoria.
   - Respuesta: `{ "ok": true, "cabinet": { "id": "A", "url": "...", "row_len": 3, "col_len": 3 } }`
+  - Efecto: persiste en `topology.json` (ruta en `TOPOLOGY_FILE` o por defecto en el raíz del proyecto).
 
 - GET `/api/cabinets`
   - Respuesta: `{ "items": [ { "id": "A", "url": "...", "row_len": 3, "col_len": 3 } ] }`
+  - Fuente: topología en memoria (previamente cargada desde `topology.json`, si existe).
+
+- DELETE `/api/cabinets/{id}`
+  - Acción: elimina un armario registrado por su `id` y guarda `topology.json`.
+  - Respuesta: `{ "ok": true }` o `404` si no existe.
 
 - POST `/api/trace`
   - Body: `{ "cabinet": "A", "command": { "row": 1, "col": 2, "on": true, "color": "#00ff00" } }`
@@ -73,4 +79,3 @@ curl -s -X POST http://127.0.0.1:5000/api/trace \
   -H "Content-Type: application/json" \
   -d '{"cabinet":"A","command":{"on":false,"color":"red"}}'
 ```
-
