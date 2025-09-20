@@ -1,0 +1,18 @@
+[project]
+name = "wt32-mockup"
+version = "0.1.0"
+description = "Proyecto paralelo mínimo inspirado en key-car-group"
+requires-python = ">=3.9"
+readme = "README.md"
+authors = [
+  { name = "Your Name" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+web = ["flask>=2.3.0"]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+
