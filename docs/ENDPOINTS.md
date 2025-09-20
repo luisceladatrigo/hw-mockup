@@ -40,13 +40,13 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
 ## client_app.py (Cliente/Orquestador)
 
 - POST `/api/cabinets`
-  - Body: `{ "id": "A", "url": "http://127.0.0.1:5001" }`
-  - Acción: consulta `url/api/state` para validar y registra el armario en memoria.
-  - Respuesta: `{ "ok": true, "cabinet": { "id": "A", "url": "...", "row_len": 3, "col_len": 3 } }`
+  - Body: `{ "alias": "Armario A"?, "url": "http://127.0.0.1:5001" }`
+  - Acción: consulta `url/api/state`, obtiene `cabinet_id` y registra el armario (usa `cabinet_id` como `id`).
+  - Respuesta: `{ "ok": true, "cabinet": { "id": "A", "alias": "Armario A", "url": "...", "row_len": 3, "col_len": 3 } }`
   - Efecto: persiste en `topology.json` (ruta en `TOPOLOGY_FILE` o por defecto en el raíz del proyecto).
 
 - GET `/api/cabinets`
-  - Respuesta: `{ "items": [ { "id": "A", "url": "...", "row_len": 3, "col_len": 3 } ] }`
+  - Respuesta: `{ "items": [ { "id": "A", "alias": "Armario A", "url": "...", "row_len": 3, "col_len": 3 } ] }`
   - Fuente: topología en memoria (previamente cargada desde `topology.json`, si existe).
 
 - DELETE `/api/cabinets/{id}`

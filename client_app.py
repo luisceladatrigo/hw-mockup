@@ -39,17 +39,17 @@ app = Flask(__name__)
 # Archivo de persistencia ligero (JSON) para la topología.
 TOPOLOGY_FILE = os.environ.get("TOPOLOGY_FILE", "topology.json")
 
-# Topología en memoria: id -> {url, row_len, col_len}
+# Topología en memoria: server_id -> {url, row_len, col_len, alias}
 CABINETS: Dict[str, Dict[str, Any]] = {}
 
 
 def load_topology(path: str = TOPOLOGY_FILE) -> None:
     """Carga `topology.json` si existe y rellena CABINETS.
 
-    Estructura esperada:
+    Estructura esperada (alias opcional):
     {
       "schema_version": 1,
-      "cabinets": [ {"id": "A", "url": "http://...", "row_len": 3, "col_len": 3}, ... ]
+      "cabinets": [ {"id": "A", "url": "http://...", "row_len": 3, "col_len": 3, "alias": "Armario A"}, ... ]
     }
     """
     global CABINETS
@@ -71,8 +71,9 @@ def load_topology(path: str = TOPOLOGY_FILE) -> None:
                 clen = int(it.get("col_len", 0))
             except Exception:
                 rlen = 0; clen = 0
+            alias = str(it.get("alias") or "").strip()
             if cid and url and rlen > 0 and clen > 0 and cid not in mem:
-                mem[cid] = {"url": url, "row_len": rlen, "col_len": clen}
+                mem[cid] = {"url": url, "row_len": rlen, "col_len": clen, "alias": alias}
         CABINETS = mem
     except Exception:
         CABINETS = {}
@@ -83,7 +84,7 @@ def save_topology(path: str = TOPOLOGY_FILE) -> None:
     data = {
         "schema_version": 1,
         "cabinets": [
-            {"id": cid, "url": meta.get("url"), "row_len": int(meta.get("row_len", 0)), "col_len": int(meta.get("col_len", 0))}
+            {"id": cid, "url": meta.get("url"), "row_len": int(meta.get("row_len", 0)), "col_len": int(meta.get("col_len", 0)), "alias": meta.get("alias", "")}
             for cid, meta in sorted(CABINETS.items(), key=lambda kv: kv[0])
         ],
     }
@@ -306,33 +307,30 @@ def api_cabinets_list() -> Response:
 def api_cabinets_add() -> Response:
     """Registra un armario (valida consultando /api/state del hw_server).
 
-    Entrada: {"id": str, "url": str}
-    - Comprueba que el `hw_server` responde y extrae `row_len`/`col_len`.
-    - Almacena en memoria (no hay persistencia por ahora).
+    Entrada: {"alias": str?, "url": str}
+    - Usa el `cabinet_id` reportado por el hw_server como ID real.
+    - Guarda alias (opcional), url y tamaños.
     """
     payload = request.get_json(silent=True) or {}
-    cid = str(payload.get("id") or "").strip()
+    alias = str(payload.get("alias") or payload.get("id") or "").strip()
     url = str(payload.get("url") or "").strip()
-    if not cid:
-        return jsonify({"error": "id requerido"}), 400
     if not url:
         return jsonify({"error": "url requerida"}), 400
-    if cid in CABINETS:
-        return jsonify({"error": "id ya registrado"}), 400
-    # Validar el hw_server consultando /api/state
+    # Consultar /api/state para obtener cabinet_id y tamaños
     try:
         req = urllib.request.Request(url.rstrip("/") + "/api/state", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+        server_id = str(data.get("cabinet_id") or "").strip()
         row_len = int(data.get("row_len", 0))
         col_len = int(data.get("col_len", 0))
-        if row_len <= 0 or col_len <= 0:
+        if (not server_id) or row_len <= 0 or col_len <= 0:
             return jsonify({"error": "respuesta invalida del hw_server"}), 400
     except Exception as ex:
         return jsonify({"error": f"no se pudo validar hw_server: {ex}"}), 502
-    CABINETS[cid] = {"url": url.rstrip("/"), "row_len": row_len, "col_len": col_len}
+    CABINETS[server_id] = {"url": url.rstrip("/"), "row_len": row_len, "col_len": col_len, "alias": alias}
     save_topology()
-    return jsonify({"ok": True, "cabinet": {"id": cid, "url": CABINETS[cid]["url"], "row_len": row_len, "col_len": col_len}})
+    return jsonify({"ok": True, "cabinet": {"id": server_id, "alias": alias, "url": CABINETS[server_id]["url"], "row_len": row_len, "col_len": col_len}})
 
 
 @app.delete("/api/cabinets/<cid>")

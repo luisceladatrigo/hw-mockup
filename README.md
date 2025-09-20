@@ -52,7 +52,7 @@ Contrato API (resumen)
   - Compatibilidad: `POST /api/led` (set color y on/off global sin tocar row/col cuando `on=true`).
 - Cliente/Orquestador (`client_app.py`):
   - `POST /api/cabinets` → registra armario tras validar `hw_server` (`/api/state`).
-    Body `{ id:"A", url:"http://127.0.0.1:5001" }` → `{ ok:true, cabinet:{...} }`
+    Body `{ alias:"Armario A"?, url:"http://127.0.0.1:5001" }` → `{ ok:true, cabinet:{ id:"A", alias:"Armario A", ...} }`. El `id` se toma del `cabinet_id` real reportado por el `hw_server`.
   - `GET /api/cabinets` → lista `{ items:[{id,url,row_len,col_len}, ...] }`
   - `POST /api/trace` → body `{ cabinet:"A", command:{ row, col, on, color } }` → reenvía a `hw_server`.
 
