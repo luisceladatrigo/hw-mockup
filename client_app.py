@@ -212,12 +212,58 @@ def index() -> Response:
             (data.items||[]).forEach(function(c) {
               const opt = document.createElement('option');
               opt.value = c.id;
-              opt.textContent = c.id + ' @ ' + c.url + ' (R=' + c.row_len + ', C=' + c.col_len + ')';
+              opt.textContent = (c.alias ? (c.alias + ' [' + c.id + ']') : c.id) + ' @ ' + c.url + ' (R=' + c.row_len + ', C=' + c.col_len + ')';
+              opt.setAttribute('data-row-len', String(c.row_len||0));
+              opt.setAttribute('data-col-len', String(c.col_len||0));
               sel.appendChild(opt);
             });
           } catch (e) { /* ignore */ }
         }
         document.getElementById('refreshCabs').addEventListener('click', loadCabinets);
+        // Añadir info de límites y botón eliminar si no existen
+        (function ensureControls(){
+          const sel = document.getElementById('cab_select');
+          const ref = document.getElementById('refreshCabs');
+          if (ref && !document.getElementById('limits')) {
+            const span = document.createElement('span');
+            span.id = 'limits';
+            span.style.marginLeft = '10px';
+            span.style.color = '#9ca3af';
+            ref.parentNode.insertBefore(span, ref.nextSibling);
+          }
+          if (ref && !document.getElementById('delCabBtn')) {
+            const btn = document.createElement('button');
+            btn.id = 'delCabBtn';
+            btn.textContent = 'Eliminar';
+            btn.style.marginLeft = 'auto';
+            btn.style.background = '#7f1d1d';
+            btn.style.borderColor = '#7f1d1d';
+            ref.parentNode.appendChild(btn);
+            btn.addEventListener('click', async function(){
+              const id = sel && sel.value ? sel.value : '';
+              const st = document.getElementById('status');
+              if (!id) { st.className='status err'; st.textContent='Error: selecciona un armario para eliminar'; return; }
+              try {
+                const res = await fetch('/api/cabinets/' + encodeURIComponent(id), { method:'DELETE' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error||'Fallo');
+                st.className='status ok'; st.textContent='Armario eliminado: ' + id;
+                loadCabinets();
+              } catch(e) { st.className='status err'; st.textContent='Error: ' + (e.message||e); }
+            });
+          }
+          try { sel.addEventListener('change', updateLimits); } catch(e) {}
+        })();
+
+        function updateLimits(){
+          const sel = document.getElementById('cab_select');
+          const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+          const lim = document.getElementById('limits');
+          if (!opt || !lim) return;
+          const r = Number(opt.getAttribute('data-row-len')||'0');
+          const c = Number(opt.getAttribute('data-col-len')||'0');
+          lim.textContent = (r && c) ? ('Límites: row 0..'+(r-1)+', col 0..'+(c-1)) : '';
+        }
         document.getElementById('addCabBtn').addEventListener('click', async function() {
           const id = String(document.getElementById('cab_id').value||'').trim();
           const url = String(document.getElementById('cab_url').value||'').trim();
@@ -299,6 +345,7 @@ def api_cabinets_list() -> Response:
             "url": meta.get("url"),
             "row_len": meta.get("row_len"),
             "col_len": meta.get("col_len"),
+            "alias": meta.get("alias", ""),
         })
     return jsonify({"items": items})
 

@@ -144,13 +144,13 @@ def home() -> Response:
     Visualizamos dos filas de "LEDs" (divs). Si STATE.on es true, encendemos
     el índice seleccionado en cada tira con el color actual.
     """
-    html = f"""
+    html = """
     <!doctype html>
     <html lang="es">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>HW Simulado – {CABINET_ID}</title>
+      <title>HW Simulado – <<CAB>></title>
       <style>
         :root { --bg:#0b1220; --fg:#d1d5db; --muted:#9ca3af; --card:#111827; --border:#1f2937; --grid:#222; --grid2:#333; }
         body { margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); }
@@ -165,7 +165,7 @@ def home() -> Response:
     <body>
       <div class="wrap">
         <div class="card">
-          <h1>HW Simulado – {CABINET_ID}</h1>
+          <h1>HW Simulado – <<CAB>></h1>
           <svg id="board" class="board"></svg>
           <div class="legend"><span>Los segmentos iluminados representan las tiras reales (fila y columna). La intersección se marca con una cruz.</span></div>
           <div class="info" id="info"></div>
@@ -269,6 +269,7 @@ def home() -> Response:
     </body>
     </html>
     """
+    html = html.replace("<<CAB>>", CABINET_ID)
     return Response(html, mimetype="text/html")
 
 
