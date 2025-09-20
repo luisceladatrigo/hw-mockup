@@ -4,7 +4,7 @@ Gracias por contribuir. Este proyecto avanza por iteraciones pequeñas con foco 
 
 ## Estándares
 - Estilo de commit: Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`, `perf:`, `build:`, `ci:`).
-- Versionado: SemVer (X.Y.Z). La versión vive en `core.__version__`.
+- Versionado: SemVer (X.Y.Z).
 - Changelog: mantener `CHANGELOG.md` (sección `Unreleased`) y mover al publicar.
 - Roadmap: mantener `ROADMAP.md` con tareas marcadas.
 
@@ -13,7 +13,6 @@ Gracias por contribuir. Este proyecto avanza por iteraciones pequeñas con foco 
 - Web opcional (si instalas Flask): `python web_app.py` y abrir `/health`.
 
 ## Código
-- No dependas del repo de referencia. Este proyecto debe ser autónomo.
 - Mantén funciones pequeñas y con propósito único.
 - Añade pruebas unitarias para cambios relevantes.
 

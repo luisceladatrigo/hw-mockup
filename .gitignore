@@ -38,13 +38,5 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project-specific
-assignments.json
-backups/
-clients.json
-keys.json
-bench/
-static/keylocator-bg.png
-
-# Exclude reference clone
+# Local folders to ignore
 key-car-group/
