@@ -157,8 +157,9 @@ def home() -> Response:
         .wrap {{ max-width:900px; margin:0 auto; padding:16px; }}
         .card {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 10px 28px rgba(0,0,0,0.35); }}
         h1 {{ font-size:20px; margin:0 0 8px; }}
-        .strip {{ display:flex; gap:10px; justify-content:center; margin: 8px 0; }}
-        .dot {{ width:42px; height:42px; border-radius:10px; background:var(--off); border:2px solid #222; box-shadow: inset 0 0 10px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:12px; color:#999; }}
+        .grid {{ display:grid; gap:8px; justify-content:center; margin-top:10px; }}
+        .cell {{ width:42px; height:42px; border-radius:8px; background:var(--off); border:2px solid #222; box-shadow: inset 0 0 10px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; color:#111; }}
+        .legend {{ display:flex; gap:8px; justify-content:center; margin-top:8px; font-size:12px; color:var(--muted); }}
         .info {{ color:var(--muted); text-align:center; margin-top:8px; font-size:12px; }}
       </style>
     </head>
@@ -166,21 +167,36 @@ def home() -> Response:
       <div class="wrap">
         <div class="card">
           <h1>HW Simulado – {CABINET_ID}</h1>
-          <div class="strip" id="rows"></div>
-          <div class="strip" id="cols"></div>
+          <div id="grid" class="grid"></div>
+          <div class="legend"><span>Vista de casilleros (cruz en fila/columna seleccionadas)</span></div>
           <div class="info" id="info"></div>
         </div>
       </div>
       <script>
-        function makeDots(containerId, n) {{
-          const el = document.getElementById(containerId);
-          el.innerHTML='';
-          for (let i=0;i<n;i++) {{
-            const d = document.createElement('div');
-            d.className = 'dot';
-            d.id = containerId + '-dot-' + i;
-            d.textContent = i;
-            el.appendChild(d);
+        function hexToRGBA(hex, alpha) {{
+          try {{
+            const h = String(hex||'').replace('#','');
+            const r = parseInt(h.substring(0,2), 16);
+            const g = parseInt(h.substring(2,4), 16);
+            const b = parseInt(h.substring(4,6), 16);
+            return 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha==null?1:alpha) + ')';
+          }} catch (e) {{ return hex; }}
+        }}
+
+        function makeGrid(rows, cols) {{
+          const grid = document.getElementById('grid');
+          grid.innerHTML='';
+          grid.style.gridTemplateColumns = 'repeat(' + cols + ', 42px)';
+          for (let r=0; r<rows; r++) {{
+            for (let c=0; c<cols; c++) {{
+              const d = document.createElement('div');
+              d.className = 'cell';
+              d.id = 'cell-' + r + '-' + c;
+              d.setAttribute('data-r', String(r));
+              d.setAttribute('data-c', String(c));
+              d.textContent = '';
+              grid.appendChild(d);
+            }}
           }}
         }}
         async function refresh() {{
@@ -188,25 +204,30 @@ def home() -> Response:
             const res = await fetch('/api/state');
             const data = await res.json();
             const info = document.getElementById('info');
-            // Crear dots si cambió la longitud
-            if (!document.getElementById('rows-dot-0') || document.querySelectorAll('#rows .dot').length !== data.row_len) {{
-              makeDots('rows', data.row_len);
-            }}
-            if (!document.getElementById('cols-dot-0') || document.querySelectorAll('#cols .dot').length !== data.col_len) {{
-              makeDots('cols', data.col_len);
-            }}
+            // Crear grid si cambió la longitud
+            const need = (!document.getElementById('cell-0-0')) || (document.querySelectorAll('#grid .cell').length !== (data.row_len * data.col_len));
+            if (need) {{ makeGrid(data.row_len, data.col_len); }}
             // Reset
-            document.querySelectorAll('.dot').forEach(function(d) {{ d.style.background='var(--off)'; d.style.color='#999'; d.style.borderColor = '#222'; }});
-            // Encender seleccion si on=true
+            document.querySelectorAll('.cell').forEach(function(d) {{ d.style.background='var(--off)'; d.style.borderColor = '#222'; d.style.color='#111'; d.textContent=''; }});
+            // Encender selección si on=true: sombrear fila y columna, cruz en intersección
             if (data.on) {{
-              const color = String(data.color||'#000000');
-              if (Number.isInteger(data.row) && data.row >=0 && data.row < data.row_len) {{
-                const r = document.getElementById('rows-dot-' + data.row);
-                if (r) {{ r.style.background = color; r.style.color='#111'; r.style.borderColor = color; }}
+              const color = String(data.color||'#00ff00');
+              const tint = hexToRGBA(color, 0.25);
+              if (Number.isInteger(data.row) && data.row >= 0 && data.row < data.row_len) {{
+                for (let c=0; c<data.col_len; c++) {{
+                  const cell = document.getElementById('cell-' + data.row + '-' + c);
+                  if (cell) {{ cell.style.background = tint; cell.style.borderColor = color; }}
+                }}
               }}
-              if (Number.isInteger(data.col) && data.col >=0 && data.col < data.col_len) {{
-                const c = document.getElementById('cols-dot-' + data.col);
-                if (c) {{ c.style.background = color; c.style.color='#111'; c.style.borderColor = color; }}
+              if (Number.isInteger(data.col) && data.col >= 0 && data.col < data.col_len) {{
+                for (let r=0; r<data.row_len; r++) {{
+                  const cell = document.getElementById('cell-' + r + '-' + data.col);
+                  if (cell) {{ cell.style.background = tint; cell.style.borderColor = color; }}
+                }}
+              }}
+              if (Number.isInteger(data.row) && Number.isInteger(data.col)) {{
+                const cross = document.getElementById('cell-' + data.row + '-' + data.col);
+                if (cross) {{ cross.textContent = 'X'; cross.style.color = color; cross.style.background = hexToRGBA(color, 0.35); cross.style.borderColor = color; }}
               }}
             }}
             info.textContent = 'cabinet=' + data.cabinet_id + ' | on=' + (!!data.on) + ' | color=' + (data.color||'-') + ' | row=' + (data.row==null?'(none)':data.row) + ' | col=' + (data.col==null?'(none)':data.col) + ' | ts=' + (data.ts||'-');
