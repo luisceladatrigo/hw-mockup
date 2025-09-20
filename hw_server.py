@@ -152,84 +152,114 @@ def home() -> Response:
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>HW Simulado – {CABINET_ID}</title>
       <style>
-        :root {{ --bg:#0b1220; --fg:#d1d5db; --muted:#9ca3af; --card:#111827; --border:#1f2937; --off:#0a0a0a; }}
-        body {{ margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); }}
-        .wrap {{ max-width:900px; margin:0 auto; padding:16px; }}
-        .card {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 10px 28px rgba(0,0,0,0.35); }}
-        h1 {{ font-size:20px; margin:0 0 8px; }}
-        .grid {{ display:grid; gap:8px; justify-content:center; margin-top:10px; }}
-        .cell {{ width:42px; height:42px; border-radius:8px; background:var(--off); border:2px solid #222; box-shadow: inset 0 0 10px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; color:#111; }}
-        .legend {{ display:flex; gap:8px; justify-content:center; margin-top:8px; font-size:12px; color:var(--muted); }}
-        .info {{ color:var(--muted); text-align:center; margin-top:8px; font-size:12px; }}
+        :root { --bg:#0b1220; --fg:#d1d5db; --muted:#9ca3af; --card:#111827; --border:#1f2937; --grid:#222; --grid2:#333; }
+        body { margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); }
+        .wrap { max-width:900px; margin:0 auto; padding:16px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; box-shadow:0 10px 28px rgba(0,0,0,0.35); }
+        h1 { font-size:20px; margin:0 0 8px; }
+        .board { display:block; margin: 12px auto; background: #0c1426; border-radius: 10px; box-shadow: inset 0 0 18px rgba(0,0,0,0.45); }
+        .legend { display:flex; gap:8px; justify-content:center; margin-top:8px; font-size:12px; color:var(--muted); }
+        .info { color:var(--muted); text-align:center; margin-top:8px; font-size:12px; }
       </style>
     </head>
     <body>
       <div class="wrap">
         <div class="card">
           <h1>HW Simulado – {CABINET_ID}</h1>
-          <div id="grid" class="grid"></div>
-          <div class="legend"><span>Vista de casilleros (cruz en fila/columna seleccionadas)</span></div>
+          <svg id="board" class="board"></svg>
+          <div class="legend"><span>Los segmentos iluminados representan las tiras reales (fila y columna). La intersección se marca con una cruz.</span></div>
           <div class="info" id="info"></div>
         </div>
       </div>
       <script>
-        function hexToRGBA(hex, alpha) {{
-          try {{
-            const h = String(hex||'').replace('#','');
-            const r = parseInt(h.substring(0,2), 16);
-            const g = parseInt(h.substring(2,4), 16);
-            const b = parseInt(h.substring(4,6), 16);
-            return 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha==null?1:alpha) + ')';
-          }} catch (e) {{ return hex; }}
-        }}
+        function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
-        function makeGrid(rows, cols) {{
-          const grid = document.getElementById('grid');
-          grid.innerHTML='';
-          grid.style.gridTemplateColumns = 'repeat(' + cols + ', 42px)';
-          for (let r=0; r<rows; r++) {{
-            for (let c=0; c<cols; c++) {{
-              const d = document.createElement('div');
-              d.className = 'cell';
-              d.id = 'cell-' + r + '-' + c;
-              d.setAttribute('data-r', String(r));
-              d.setAttribute('data-c', String(c));
-              d.textContent = '';
-              grid.appendChild(d);
-            }}
-          }}
-        }}
+        function drawBoard(svg, rows, cols, selRow, selCol, color) {
+          const cell = 60;          // tamaño de casillero
+          const pad = 20;           // margen
+          const w = cols*cell + pad*2;
+          const h = rows*cell + pad*2;
+          svg.setAttribute('width', String(w));
+          svg.setAttribute('height', String(h));
+          clear(svg);
+
+          // Fondo
+          const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          bg.setAttribute('x', '0'); bg.setAttribute('y','0');
+          bg.setAttribute('width', String(w)); bg.setAttribute('height', String(h));
+          bg.setAttribute('fill', '#0c1426');
+          svg.appendChild(bg);
+
+          // Rejilla (bordes de celdas)
+          const stroke1 = '#202937';
+          const stroke2 = '#2b3647';
+          for (let i=0; i<=cols; i++) {
+            const x = pad + i*cell;
+            const v = document.createElementNS('http://www.w3.org/2000/svg','line');
+            v.setAttribute('x1', String(x)); v.setAttribute('y1', String(pad));
+            v.setAttribute('x2', String(x)); v.setAttribute('y2', String(h-pad));
+            v.setAttribute('stroke', i===0||i===cols ? stroke1 : stroke2);
+            v.setAttribute('stroke-width', i===0||i===cols ? '3' : '2');
+            svg.appendChild(v);
+          }
+          for (let j=0; j<=rows; j++) {
+            const y = pad + j*cell;
+            const hl = document.createElementNS('http://www.w3.org/2000/svg','line');
+            hl.setAttribute('x1', String(pad)); hl.setAttribute('y1', String(y));
+            hl.setAttribute('x2', String(w-pad)); hl.setAttribute('y2', String(y));
+            hl.setAttribute('stroke', j===0||j===rows ? stroke1 : stroke2);
+            hl.setAttribute('stroke-width', j===0||j===rows ? '3' : '2');
+            svg.appendChild(hl);
+          }
+
+          // Segmentos iluminados (tiras): fila y columna seleccionadas
+          if (color && selRow != null) {
+            const y = pad + selRow*cell + cell/2;
+            const seg = document.createElementNS('http://www.w3.org/2000/svg','line');
+            seg.setAttribute('x1', String(pad)); seg.setAttribute('y1', String(y));
+            seg.setAttribute('x2', String(w-pad)); seg.setAttribute('y2', String(y));
+            seg.setAttribute('stroke', color);
+            seg.setAttribute('stroke-width', '6');
+            seg.setAttribute('stroke-linecap','round');
+            svg.appendChild(seg);
+          }
+          if (color && selCol != null) {
+            const x = pad + selCol*cell + cell/2;
+            const seg = document.createElementNS('http://www.w3.org/2000/svg','line');
+            seg.setAttribute('x1', String(x)); seg.setAttribute('y1', String(pad));
+            seg.setAttribute('x2', String(x)); seg.setAttribute('y2', String(h-pad));
+            seg.setAttribute('stroke', color);
+            seg.setAttribute('stroke-width', '6');
+            seg.setAttribute('stroke-linecap','round');
+            svg.appendChild(seg);
+          }
+
+          // Cruz en casillero (row,col)
+          if (color && selRow != null && selCol != null) {
+            const cx = pad + selCol*cell + cell/2;
+            const cy = pad + selRow*cell + cell/2;
+            const d = cell*0.45;
+            const l1 = document.createElementNS('http://www.w3.org/2000/svg','line');
+            l1.setAttribute('x1', String(cx-d)); l1.setAttribute('y1', String(cy-d));
+            l1.setAttribute('x2', String(cx+d)); l1.setAttribute('y2', String(cy+d));
+            l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '5'); l1.setAttribute('stroke-linecap','round');
+            const l2 = document.createElementNS('http://www.w3.org/2000/svg','line');
+            l2.setAttribute('x1', String(cx+d)); l2.setAttribute('y1', String(cy-d));
+            l2.setAttribute('x2', String(cx-d)); l2.setAttribute('y2', String(cy+d));
+            l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '5'); l2.setAttribute('stroke-linecap','round');
+            svg.appendChild(l1); svg.appendChild(l2);
+          }
+        }
         async function refresh() {{
           try {{
             const res = await fetch('/api/state');
             const data = await res.json();
             const info = document.getElementById('info');
-            // Crear grid si cambió la longitud
-            const need = (!document.getElementById('cell-0-0')) || (document.querySelectorAll('#grid .cell').length !== (data.row_len * data.col_len));
-            if (need) {{ makeGrid(data.row_len, data.col_len); }}
-            // Reset
-            document.querySelectorAll('.cell').forEach(function(d) {{ d.style.background='var(--off)'; d.style.borderColor = '#222'; d.style.color='#111'; d.textContent=''; }});
-            // Encender selección si on=true: sombrear fila y columna, cruz en intersección
-            if (data.on) {{
-              const color = String(data.color||'#00ff00');
-              const tint = hexToRGBA(color, 0.25);
-              if (Number.isInteger(data.row) && data.row >= 0 && data.row < data.row_len) {{
-                for (let c=0; c<data.col_len; c++) {{
-                  const cell = document.getElementById('cell-' + data.row + '-' + c);
-                  if (cell) {{ cell.style.background = tint; cell.style.borderColor = color; }}
-                }}
-              }}
-              if (Number.isInteger(data.col) && data.col >= 0 && data.col < data.col_len) {{
-                for (let r=0; r<data.row_len; r++) {{
-                  const cell = document.getElementById('cell-' + r + '-' + data.col);
-                  if (cell) {{ cell.style.background = tint; cell.style.borderColor = color; }}
-                }}
-              }}
-              if (Number.isInteger(data.row) && Number.isInteger(data.col)) {{
-                const cross = document.getElementById('cell-' + data.row + '-' + data.col);
-                if (cross) {{ cross.textContent = 'X'; cross.style.color = color; cross.style.background = hexToRGBA(color, 0.35); cross.style.borderColor = color; }}
-              }}
-            }}
+            const svg = document.getElementById('board');
+            const selRow = (Number.isInteger(data.row) ? data.row : null);
+            const selCol = (Number.isInteger(data.col) ? data.col : null);
+            const color = (data.on ? String(data.color||'#00ff00') : null);
+            drawBoard(svg, data.row_len, data.col_len, selRow, selCol, color);
             info.textContent = 'cabinet=' + data.cabinet_id + ' | on=' + (!!data.on) + ' | color=' + (data.color||'-') + ' | row=' + (data.row==null?'(none)':data.row) + ' | col=' + (data.col==null?'(none)':data.col) + ' | ts=' + (data.ts||'-');
           }} catch (e) {{ /* ignorar errores */ }}
         }}
