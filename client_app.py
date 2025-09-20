@@ -489,7 +489,11 @@ def index() -> Response:
 
 @app.get("/api/cabinets")
 def api_cabinets_list() -> Response:
-    """Lista la topología en memoria (armarios registrados)."""
+    """Lista la topología en memoria (armarios registrados).
+
+    Respuesta:
+    {"items": [{"id": str, "url": str, "row_len": int, "col_len": int}, ...]}
+    """
     items = []
     for cid, meta in CABINETS.items():
         items.append({
@@ -503,7 +507,12 @@ def api_cabinets_list() -> Response:
 
 @app.post("/api/cabinets")
 def api_cabinets_add() -> Response:
-    """Registra un armario (valida consultando /api/state del hw_server)."""
+    """Registra un armario (valida consultando /api/state del hw_server).
+
+    Entrada: {"id": str, "url": str}
+    - Comprueba que el `hw_server` responde y extrae `row_len`/`col_len`.
+    - Almacena en memoria (no hay persistencia por ahora).
+    """
     payload = request.get_json(silent=True) or {}
     cid = str(payload.get("id") or "").strip()
     url = str(payload.get("url") or "").strip()
@@ -533,6 +542,8 @@ def api_trace() -> Response:
     """Reenvía un trazado al hw_server del armario seleccionado.
 
     Entrada: {"cabinet": "A", "command": {"row":int|null, "col":int|null, "on":bool, "color":"#RRGGBB"|"red"}}
+    - No valida rangos aquí: delega en el `hw_server` (fuente de verdad).
+    - Responde `{ok:true}` si el `hw_server` responde 2xx; si no, propaga error.
     """
     payload = request.get_json(silent=True) or {}
     cabinet = str(payload.get("cabinet") or "").strip()
