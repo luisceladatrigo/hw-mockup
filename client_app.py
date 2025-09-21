@@ -401,44 +401,7 @@ def api_cabinets_delete(cid: str) -> Response:
     return jsonify({"error": "armario no registrado"}), 404
 
 
-@app.post("/api/trace")
-def api_trace() -> Response:
-    """Reenvía un trazado al hw_server del armario seleccionado.
-
-    Entrada: {"cabinet": "A", "command": {"row":int|null, "col":int|null, "on":bool, "color":"#RRGGBB"|"red"}}
-    - No valida rangos aquí: delega en el `hw_server` (fuente de verdad).
-    - Responde `{ok:true}` si el `hw_server` responde 2xx; si no, propaga error.
-    """
-    payload = request.get_json(silent=True) or {}
-    cabinet = str(payload.get("cabinet") or "").strip()
-    if not cabinet:
-        return jsonify({"error": "cabinet requerido"}), 400
-    meta = CABINETS.get(cabinet)
-    if not meta:
-        return jsonify({"error": "armario no registrado"}), 404
-    command = payload.get("command") or {}
-    if not isinstance(command, dict):
-        return jsonify({"error": "command debe ser objeto"}), 400
-    # Reenvío al hw_server
-    url = meta["url"] + "/api/trace"
-    data = json.dumps(command).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            if 200 <= resp.status < 300:
-                return jsonify({"ok": True})
-            text = resp.read().decode("utf-8", errors="ignore")
-            return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
-    except urllib.error.HTTPError as he:
-        try:
-            text = he.read().decode("utf-8", errors="ignore")
-        except Exception:
-            text = str(he)
-        return jsonify({"error": f"HTTPError {he.code}: {text}"}), 502
-    except urllib.error.URLError as ue:
-        return jsonify({"error": f"no se pudo conectar al hw_server: {ue.reason}"}), 502
-    except Exception as ex:
-        return jsonify({"error": f"fallo al reenviar: {ex}"}), 500
+# Nota: /api/trace eliminado del flujo. Usar /api/mark o /api/marks.
 
 
 @app.post("/api/mark")
