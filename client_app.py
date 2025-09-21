@@ -33,6 +33,7 @@ from typing import Any, Dict
 import time
 
 from flask import Flask, jsonify, request, Response
+from keycar_client.core.service import KeyCarClient
 
 
 app = Flask(__name__)
@@ -407,20 +408,14 @@ def api_cabinets_delete(cid: str) -> Response:
 
 
 # Nota: /api/trace eliminado del flujo. Usar /api/mark o /api/marks.
-
-
 @app.post("/api/mark")
 def api_mark() -> Response:
-    """Reenvía una marca (on/off) al hw_server del armario seleccionado.
-
-    Entrada: {"cabinet": "A", "id": "m1"?, "row":int, "col":int, "color":"#RRGGBB"|"red", "on":bool}
-    """
+    """Aplica ON/OFF mediante el core, manteniendo estado local y UI."""
     payload = request.get_json(silent=True) or {}
     cabinet = str(payload.get("cabinet") or "").strip()
     if not cabinet:
         return jsonify({"error": "cabinet requerido"}), 400
-    meta = CABINETS.get(cabinet)
-    if not meta:
+    if cabinet not in CABINETS:
         return jsonify({"error": "armario no registrado"}), 404
     on = bool(payload.get("on", True))
     # Actualizar desired del orquestador (clave por coordenada)
@@ -437,27 +432,13 @@ def api_mark() -> Response:
         if not color:
             return jsonify({"error": "color requerido"}), 400
         cab["marks"][key] = {"row": row, "col": col, "color": color, "ts": 0}
-    # Empujar estado completo al hw_server
+    # Empujar estado completo al hw_server a través del core (compat)
     marks = [ {"id": k, **v} for k, v in cab["marks"].items() ]
-    url = meta["url"] + "/api/marks"
-    data = json.dumps({"marks": marks}).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            if 200 <= resp.status < 300:
-                return jsonify({"ok": True})
-            text = resp.read().decode("utf-8", errors="ignore")
-            return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
-    except urllib.error.HTTPError as he:
-        try:
-            text = he.read().decode("utf-8", errors="ignore")
-        except Exception:
-            text = str(he)
-        return jsonify({"error": f"HTTPError {he.code}: {text}"}), 502
-    except urllib.error.URLError as ue:
-        return jsonify({"error": f"no se pudo conectar al hw_server: {ue.reason}"}), 502
-    except Exception as ex:
-        return jsonify({"error": f"fallo al reenviar: {ex}"}), 500
+    ok = KeyCarClient.push_marks_to(CABINETS[cabinet]["url"], marks)
+    if ok:
+        return jsonify({"ok": True})
+    return jsonify({"error": "fallo al reenviar"}), 502
+
 
 
 def main() -> None:
@@ -545,3 +526,5 @@ def api_cab_state() -> Response:
         return jsonify(data)
     except Exception as ex:
         return jsonify({"error": f"no se pudo consultar: {ex}"}), 502
+
+

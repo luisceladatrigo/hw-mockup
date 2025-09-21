@@ -35,6 +35,10 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
   - Acción: `on=true` crea/actualiza marca; `on=false` elimina la marca `id`.
   - Notas: si no se manda `id`, se usa `default`.
 
+- POST `/api/marks`
+  - Body: `{ "marks": [ {"id":"m1", "row":1, "col":2, "color":"#00ff00"}, ... ] }`
+  - Acción: reemplaza atómicamente todas las marcas activas en el armario (modo “bitmap”).
+
 - Compat: POST `/api/led`
   - Body: `{ "color": "#RRGGBB"|"red", "on": true|false }`
   - Efecto: `on=false` apaga ambas tiras (limpia `row/col`); `on=true` solo ajusta color global.
@@ -61,7 +65,7 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
 
 - POST `/api/mark`
   - Body: `{ "cabinet": "A", "id":"m1"?, "row":1, "col":2, "color":"#00ff00", "on":true }`
-  - Acción: reenvía a `A/api/mark`.
+  - Acción: actualiza el estado deseado en el orquestador y empuja el “bitmap” completo a `A/api/marks`.
 
 ## Ejemplos curl
 

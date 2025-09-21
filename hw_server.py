@@ -430,12 +430,33 @@ def api_state() -> Response:
 
 
 def main() -> None:
-    """Punto de entrada: arranca el servidor simulado en el puerto indicado."""
-    try:
-        port = int(os.environ.get("PORT", "5001"))
-    except Exception:
-        port = 5001
-    app.run(host="127.0.0.1", port=port, debug=False)
+    """Punto de entrada: arranca el servidor simulado respetando args/env.
+
+    Prioridad: argumentos CLI > variables de entorno > defaults.
+    """
+    import argparse
+
+    def _env(name: str, default: str) -> str:
+        return os.environ.get(name, default)
+
+    parser = argparse.ArgumentParser(description="HW mock server (Flask)")
+    parser.add_argument("--host", default=_env("HW_HOST", "127.0.0.1"), help="host de escucha")
+    parser.add_argument("--port", type=int, default=int(_env("PORT", "5001")), help="puerto de escucha")
+    parser.add_argument("--id", dest="cabinet_id", default=_env("CABINET_ID", "CAB"), help="ID del armario")
+    parser.add_argument("--rows", type=int, default=int(_env("ROW_LEN", "3")), help="numero de filas")
+    parser.add_argument("--cols", type=int, default=int(_env("COL_LEN", "3")), help="numero de columnas")
+    parser.add_argument("--cycle-ms", type=int, default=int(_env("CYCLE_MS", "1000")), help="intervalo de alternancia (ms)")
+
+    args = parser.parse_args()
+
+    # Aplicar a los globals utilizados por el estado/render
+    global CABINET_ID, ROW_LEN, COL_LEN, CYCLE_MS
+    CABINET_ID = str(args.cabinet_id)
+    ROW_LEN = max(1, int(args.rows))
+    COL_LEN = max(1, int(args.cols))
+    CYCLE_MS = max(0, int(args.cycle_ms))
+
+    app.run(host=str(args.host), port=int(args.port), debug=False)
 
 
 if __name__ == "__main__":
