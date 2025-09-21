@@ -1,13 +1,13 @@
-"""
+﻿"""
 hw_server.py
 =================
 
 Servidor Flask que simula un "hardware" (p. ej., una WT32/ESP32) con trazador
 de coordenadas basado en dos tiras (3+3 en este MVP):
-- Tira de filas: índices 0..ROW_LEN-1
-- Tira de columnas: índices 0..COL_LEN-1
+- Tira de filas: Ã­ndices 0..ROW_LEN-1
+- Tira de columnas: Ã­ndices 0..COL_LEN-1
 
-Ambas tiras usan el mismo color (esencia del sistema: color común como "Z").
+Ambas tiras usan el mismo color (esencia del sistema: color comÃºn como "Z").
 Al apagar, se apagan ambas tiras.
 
 Contratos soportados:
@@ -24,13 +24,13 @@ Compatibilidad (opcional):
   -> {"ok": true}
   (Ajusta el color y encendido global, sin cambiar row/col cuando on=true; si on=false, apaga ambas.)
 
-Configuración por variables de entorno (opcionales):
+ConfiguraciÃ³n por variables de entorno (opcionales):
 - CABINET_ID (por defecto "CAB")
 - ROW_LEN (por defecto 3)
 - COL_LEN (por defecto 3)
 - PORT (por defecto 5001)
 
-Ejecución local (ejemplos):
+EjecuciÃ³n local (ejemplos):
   # Armario A
   $env:CABINET_ID="A"; $env:ROW_LEN=3; $env:COL_LEN=3; $env:PORT=5001; python hw_server.py
   # Armario B
@@ -57,7 +57,7 @@ app = Flask(__name__)
 # --------------------------
 
 COLOR_NAMES: Dict[str, str] = {
-    # Mapa de nombres sencillos a HEX. Amplía a gusto.
+    # Mapa de nombres sencillos a HEX. AmplÃ­a a gusto.
     "red": "#ff0000",
     "green": "#00ff00",
     "blue": "#0000ff",
@@ -83,13 +83,15 @@ def _env_int(name: str, default: int) -> int:
 CABINET_ID = os.environ.get("CABINET_ID", "CAB")
 ROW_LEN = max(1, _env_int("ROW_LEN", 3))
 COL_LEN = max(1, _env_int("COL_LEN", 3))
+# Velocidad de alternancia entre colores en segmentos con colisiÃ³n (ms)
+CYCLE_MS = _env_int("CYCLE_MS", 1000)
 
 
 class MarksState:
-    """Permite múltiples marcas simultáneas.
+    """Permite mÃºltiples marcas simultÃ¡neas.
 
-    Cada marca representa una coordenada con un color común para tiras
-    laterales (fila izquierda y columna superior) y una cruz en la intersección.
+    Cada marca representa una coordenada con un color comÃºn para tiras
+    laterales (fila izquierda y columna superior) y una cruz en la intersecciÃ³n.
     Estructura: marks: dict[id -> {row:int, col:int, color:str, ts:int}]
     """
 
@@ -111,15 +113,31 @@ class MarksState:
         self.marks.clear()
         self.ts = int(time.time())
 
+    def replace_all(self, items: list[dict[str, Any]]) -> None:
+        self.marks.clear()
+        for it in items:
+            try:
+                mid = str(it.get("id") or "").strip() or f"m{int(time.time())}"
+                row = int(it.get("row"))
+                col = int(it.get("col"))
+                color = str(it.get("color") or "")
+                if not (0 <= row < ROW_LEN and 0 <= col < COL_LEN):
+                    continue
+                color_hex = normalize_color(color)
+                if not color_hex:
+                    continue
+                self.marks[mid] = {"row": row, "col": col, "color": color_hex, "ts": int(time.time())}
+            except Exception:
+                continue
+        self.ts = int(time.time())
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "cabinet_id": CABINET_ID,
             "row_len": int(ROW_LEN),
             "col_len": int(COL_LEN),
-            "marks": [
-                {"id": k, "row": v["row"], "col": v["col"], "color": v["color"], "ts": v["ts"]}
-                for k, v in sorted(self.marks.items(), key=lambda kv: kv[1]["ts"])  # por tiempo
-            ],
+            "marks": [ {"id": k, "row": v["row"], "col": v["col"], "color": v["color"], "ts": v["ts"]}
+                        for k, v in self.marks.items() ],  # respeta orden de inserciÃ³n
             "ts": int(self.ts),
         }
 
@@ -131,9 +149,9 @@ def normalize_color(value: str) -> Optional[str]:
     """Convierte un color aceptado a HEX #RRGGBB.
 
     Acepta:
-    - HEX ya válido (#RRGGBB)
+    - HEX ya vÃ¡lido (#RRGGBB)
     - Nombres simples definidos en COLOR_NAMES
-    Devuelve HEX o None si no es válido.
+    Devuelve HEX o None si no es vÃ¡lido.
     """
     if not isinstance(value, str):
         return None
@@ -148,10 +166,10 @@ def normalize_color(value: str) -> Optional[str]:
 
 @app.get("/")
 def home() -> Response:
-    """Página demo: muestra dos tiras (filas y columnas) y su estado.
+    """PÃ¡gina demo: muestra dos tiras (filas y columnas) y su estado.
 
     Visualizamos dos filas de "LEDs" (divs). Si STATE.on es true, encendemos
-    el índice seleccionado en cada tira con el color actual.
+    el Ã­ndice seleccionado en cada tira con el color actual.
     """
     html = """
     <!doctype html>
@@ -159,7 +177,7 @@ def home() -> Response:
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>HW Simulado – <<CAB>></title>
+      <title>HW Simulado â€“ <<CAB>></title>
       <style>
         :root { --bg:#0b1220; --fg:#d1d5db; --muted:#9ca3af; --card:#111827; --border:#1f2937; --grid:#222; --grid2:#333; }
         body { margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); }
@@ -174,17 +192,18 @@ def home() -> Response:
     <body>
       <div class="wrap">
         <div class="card">
-          <h1>HW Simulado – <<CAB>></h1>
+          <h1>HW Simulado â€“ <<CAB>></h1>
           <svg id="board" class="board"></svg>
-          <div class="legend"><span>Los segmentos iluminados representan las tiras reales (fila y columna). La intersección se marca con una cruz.</span></div>
+          <div class="legend"><span>Los segmentos iluminados representan las tiras reales (fila y columna). La intersecciÃ³n se marca con una cruz.</span></div>
           <div class="info" id="info"></div>
         </div>
       </div>
       <script>
+        const CYCLE_MS = <<CYCLE_MS>>;
         function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
         function drawBoard(svg, rows, cols, marks) {
-          const cell = 60;          // tamaño de casillero
+          const cell = 60;          // tamaÃ±o de casillero
           const pad = 20;           // margen
           const w = cols*cell + pad*2;
           const h = rows*cell + pad*2;
@@ -221,47 +240,65 @@ def home() -> Response:
             svg.appendChild(hl);
           }
 
-          // Dibujar cada marca: segmentos laterales y cruz en intersección
+          // Resolver colisiones por segmento: alternar (cycle) o dividir (split)
+          const topMap = {};  // col -> [colors]
+          const leftMap = {}; // row -> [colors]
           (marks||[]).forEach(function(m){
-            const row = m.row, col = m.col, color = String(m.color||'#00ff00');
-            if (!(Number.isInteger(row) && Number.isInteger(col))) return;
-            if (row<0 || row>=rows || col<0 || col>=cols) return;
-            // Segmento superior (encima de la columna)
-            const cx = pad + col*cell + cell/2;
-            const yTop = pad - 8;
-            const segTop = document.createElementNS('http://www.w3.org/2000/svg','line');
-            segTop.setAttribute('x1', String(cx - cell*0.3));
-            segTop.setAttribute('y1', String(yTop));
-            segTop.setAttribute('x2', String(cx + cell*0.3));
-            segTop.setAttribute('y2', String(yTop));
-            segTop.setAttribute('stroke', color);
-            segTop.setAttribute('stroke-width', '6');
-            segTop.setAttribute('stroke-linecap','round');
-            svg.appendChild(segTop);
-            // Segmento lateral izquierdo (a la izquierda de la fila)
-            const cy = pad + row*cell + cell/2;
-            const xLeft = pad - 8;
-            const segLeft = document.createElementNS('http://www.w3.org/2000/svg','line');
-            segLeft.setAttribute('x1', String(xLeft));
-            segLeft.setAttribute('y1', String(cy - cell*0.3));
-            segLeft.setAttribute('x2', String(xLeft));
-            segLeft.setAttribute('y2', String(cy + cell*0.3));
-            segLeft.setAttribute('stroke', color);
-            segLeft.setAttribute('stroke-width', '6');
-            segLeft.setAttribute('stroke-linecap','round');
-            svg.appendChild(segLeft);
-            // Cruz en casillero
-            const cxc = pad + col*cell + cell/2;
-            const cyc = pad + row*cell + cell/2;
+            if (!Number.isInteger(m.row) || !Number.isInteger(m.col)) return;
+            if (m.row<0||m.row>=rows||m.col<0||m.col>=cols) return;
+            const col=m.col, row=m.row, color=String(m.color||'#00ff00');
+            (topMap[col]=topMap[col]||[]).push(color);
+            (leftMap[row]=leftMap[row]||[]).push(color);
+          });
+          function drawTop(col, colors){
+            const cx=pad+col*cell+cell/2, yTop=pad-8, total=cell*0.6, x1=cx-total/2, x2=cx+total/2, n=Math.max(1,colors.length);
+            if (n>1) {
+              const idx=Math.floor(Date.now()/CYCLE_MS) % n; // alterna cada segundo
+              const seg=document.createElementNS('http://www.w3.org/2000/svg','line');
+              seg.setAttribute('x1', String(x1)); seg.setAttribute('y1', String(yTop));
+              seg.setAttribute('x2', String(x2)); seg.setAttribute('y2', String(yTop));
+              seg.setAttribute('stroke', colors[idx]); seg.setAttribute('stroke-width','6'); seg.setAttribute('stroke-linecap','round');
+              svg.appendChild(seg);
+            } else {
+              const seg=document.createElementNS('http://www.w3.org/2000/svg','line');
+              seg.setAttribute('x1', String(x1)); seg.setAttribute('y1', String(yTop));
+              seg.setAttribute('x2', String(x2)); seg.setAttribute('y2', String(yTop));
+              seg.setAttribute('stroke', colors[0]||'#00ff00'); seg.setAttribute('stroke-width','6'); seg.setAttribute('stroke-linecap','round');
+              svg.appendChild(seg);
+            }
+          }
+          function drawLeft(row, colors){
+            const cy=pad+row*cell+cell/2, xLeft=pad-8, total=cell*0.6, y1=cy-total/2, y2=cy+total/2, n=Math.max(1,colors.length);
+            if (n>1) {
+              const idx=Math.floor(Date.now()/CYCLE_MS) % n;
+              const seg=document.createElementNS('http://www.w3.org/2000/svg','line');
+              seg.setAttribute('x1', String(xLeft)); seg.setAttribute('y1', String(y1));
+              seg.setAttribute('x2', String(xLeft)); seg.setAttribute('y2', String(y2));
+              seg.setAttribute('stroke', colors[idx]); seg.setAttribute('stroke-width','6'); seg.setAttribute('stroke-linecap','round');
+              svg.appendChild(seg);
+            } else {
+              const seg=document.createElementNS('http://www.w3.org/2000/svg','line');
+              seg.setAttribute('x1', String(xLeft)); seg.setAttribute('y1', String(y1));
+              seg.setAttribute('x2', String(xLeft)); seg.setAttribute('y2', String(y2));
+              seg.setAttribute('stroke', colors[0]||'#00ff00'); seg.setAttribute('stroke-width','6'); seg.setAttribute('stroke-linecap','round');
+              svg.appendChild(seg);
+            }
+          }
+          Object.keys(topMap).forEach(function(c){ drawTop(parseInt(c), topMap[c]); });
+          Object.keys(leftMap).forEach(function(r){ drawLeft(parseInt(r), leftMap[r]); });
+          // Cruces por marca
+          (marks||[]).forEach(function(m){
+            const cxc = pad + m.col*cell + cell/2;
+            const cyc = pad + m.row*cell + cell/2;
             const d = cell*0.45;
             const l1 = document.createElementNS('http://www.w3.org/2000/svg','line');
             l1.setAttribute('x1', String(cxc-d)); l1.setAttribute('y1', String(cyc-d));
             l1.setAttribute('x2', String(cxc+d)); l1.setAttribute('y2', String(cyc+d));
-            l1.setAttribute('stroke', color); l1.setAttribute('stroke-width', '5'); l1.setAttribute('stroke-linecap','round');
+            l1.setAttribute('stroke', m.color); l1.setAttribute('stroke-width', '5'); l1.setAttribute('stroke-linecap','round');
             const l2 = document.createElementNS('http://www.w3.org/2000/svg','line');
             l2.setAttribute('x1', String(cxc+d)); l2.setAttribute('y1', String(cyc-d));
             l2.setAttribute('x2', String(cxc-d)); l2.setAttribute('y2', String(cyc+d));
-            l2.setAttribute('stroke', color); l2.setAttribute('stroke-width', '5'); l2.setAttribute('stroke-linecap','round');
+            l2.setAttribute('stroke', m.color); l2.setAttribute('stroke-width', '5'); l2.setAttribute('stroke-linecap','round');
             svg.appendChild(l1); svg.appendChild(l2);
           });
         }
@@ -281,7 +318,7 @@ def home() -> Response:
     </body>
     </html>
     """
-    html = html.replace("<<CAB>>", CABINET_ID)
+    html = html.replace("<<CAB>>", CABINET_ID).replace("<<CYCLE_MS>>", str(CYCLE_MS))
     return Response(html, mimetype="text/html")
 
 
@@ -312,7 +349,7 @@ def api_led() -> Response:
 
 @app.post("/api/trace")
 def api_trace() -> Response:
-    """Compat: establece/borra una única marca 'default'."""
+    """Compat: establece/borra una Ãºnica marca 'default'."""
     payload = request.get_json(silent=True) or {}
     on_raw = payload.get("on")
     color_raw = payload.get("color")
@@ -341,7 +378,7 @@ def api_trace() -> Response:
 
 @app.post("/api/mark")
 def api_mark() -> Response:
-    """Gestiona múltiples marcas.
+    """Gestiona mÃºltiples marcas.
 
     Entrada: {"id":str, "row":int, "col":int, "color":"#RRGGBB"|"red", "on":bool}
     on=true -> set/update; on=false -> delete id.
@@ -366,9 +403,23 @@ def api_mark() -> Response:
     return jsonify({"ok": True})
 
 
+@app.post("/api/marks")
+def api_marks() -> Response:
+    """Reemplaza todas las marcas de una vez (modo 'bitmap').
+
+    Entrada: {"marks": [ {"id":"m1","row":1,"col":2,"color":"#00ff00"}, ... ]}
+    """
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("marks")
+    if not isinstance(items, list):
+        return jsonify({"error": "marks debe ser lista"}), 400
+    STATE.replace_all(items)
+    return jsonify({"ok": True, "count": len(STATE.marks)})
+
+
 @app.get("/api/state")
 def api_state() -> Response:
-    """Devuelve el estado actual: tamaño del grid y lista de marcas activas."""
+    """Devuelve el estado actual: tamaÃ±o del grid y lista de marcas activas."""
     return jsonify(STATE.to_dict())
 
 
@@ -383,3 +434,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

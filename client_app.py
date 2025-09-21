@@ -30,6 +30,7 @@ import tempfile
 import urllib.request
 import urllib.error
 from typing import Any, Dict
+import time
 
 from flask import Flask, jsonify, request, Response
 
@@ -185,6 +186,10 @@ def index() -> Response:
               </select>
             </div>
             <div>
+              <label for="mark_id">ID marca</label>
+              <input id="mark_id" type="text" placeholder="m1" style="width:120px;" />
+            </div>
+            <div>
               <label for="row">Fila (row)</label>
               <input id="row" type="number" placeholder="0" min="0" />
             </div>
@@ -297,11 +302,12 @@ def index() -> Response:
           const on = document.getElementById('on').value === 'true';
           const colorPicker = document.getElementById('color');
           const color = String(colorPicker.getAttribute('data-selected') || colorPicker.value || '').trim();
+          const markId = String((document.getElementById('mark_id')||{}).value||'').trim();
           let row = document.getElementById('row').value;
           let col = document.getElementById('col').value;
           row = (row===''? null : Number(row));
           col = (col===''? null : Number(col));
-          return { cabinet, payload: { on, color, row, col } };
+          return { cabinet, payload: { id: markId, on, color, row, col } };
         }
 
         async function send() {
@@ -311,7 +317,8 @@ def index() -> Response:
           try {
             const { cabinet, payload } = readPayload();
             if (!cabinet) throw new Error('Selecciona un armario');
-            const res = await fetch('/api/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cabinet, command: payload }) });
+            const body = { cabinet, id: payload.id, row: payload.row, col: payload.col, color: payload.color, on: payload.on };
+            const res = await fetch('/api/mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const data = await res.json();
             if (!res.ok || !data.ok) throw new Error(data.error || 'Fallo');
             st.className = 'status ok';
@@ -419,7 +426,19 @@ def api_trace() -> Response:
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             if 200 <= resp.status < 300:
-    return jsonify({"ok": True})
+                return jsonify({"ok": True})
+            text = resp.read().decode("utf-8", errors="ignore")
+            return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
+    except urllib.error.HTTPError as he:
+        try:
+            text = he.read().decode("utf-8", errors="ignore")
+        except Exception:
+            text = str(he)
+        return jsonify({"error": f"HTTPError {he.code}: {text}"}), 502
+    except urllib.error.URLError as ue:
+        return jsonify({"error": f"no se pudo conectar al hw_server: {ue.reason}"}), 502
+    except Exception as ex:
+        return jsonify({"error": f"fallo al reenviar: {ex}"}), 500
 
 
 @app.post("/api/mark")
@@ -435,32 +454,30 @@ def api_mark() -> Response:
     meta = CABINETS.get(cabinet)
     if not meta:
         return jsonify({"error": "armario no registrado"}), 404
-    body = {
-        "id": str(payload.get("id") or "").strip() or "default",
-        "row": payload.get("row"),
-        "col": payload.get("col"),
-        "color": payload.get("color"),
-        "on": bool(payload.get("on", True)),
-    }
-    url = meta["url"] + "/api/mark"
-    data = json.dumps(body).encode("utf-8")
+    mid = str(payload.get("id") or "").strip() or f"m{int(time.time()*1000)}"
+    on = bool(payload.get("on", True))
+    # Actualizar desired del orquestador
+    cab = DESIRED.setdefault(cabinet, {"marks": {}})
+    if not on:
+        cab["marks"].pop(mid, None)
+    else:
+        try:
+            row = int(payload.get("row")); col = int(payload.get("col"))
+        except Exception:
+            return jsonify({"error": "row/col requeridos"}), 400
+        color = str(payload.get("color") or "").strip()
+        if not color:
+            return jsonify({"error": "color requerido"}), 400
+        cab["marks"][mid] = {"row": row, "col": col, "color": color, "ts": 0}
+    # Empujar estado completo al hw_server
+    marks = [ {"id": k, **v} for k, v in cab["marks"].items() ]
+    url = meta["url"] + "/api/marks"
+    data = json.dumps({"marks": marks}).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             if 200 <= resp.status < 300:
                 return jsonify({"ok": True})
-            text = resp.read().decode("utf-8", errors="ignore")
-            return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
-    except urllib.error.HTTPError as he:
-        try:
-            text = he.read().decode("utf-8", errors="ignore")
-        except Exception:
-            text = str(he)
-        return jsonify({"error": f"HTTPError {he.code}: {text}"}), 502
-    except urllib.error.URLError as ue:
-        return jsonify({"error": f"no se pudo conectar al hw_server: {ue.reason}"}), 502
-    except Exception as ex:
-        return jsonify({"error": f"fallo al reenviar: {ex}"}), 500
             text = resp.read().decode("utf-8", errors="ignore")
             return jsonify({"error": f"hw_server devolvio {resp.status}: {text}"}), 502
     except urllib.error.HTTPError as he:
@@ -482,3 +499,85 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+# Estado deseado del orquestador (en memoria): por cabinet
+# desired[cabinet_id] = { "marks": { id -> {row,col,color,ts} } }
+DESIRED: Dict[str, Dict[str, Any]] = {}
+
+
+@app.get("/panel")
+def marks_panel() -> Response:
+    html = """
+    <!doctype html>
+    <html lang=es>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Panel de Marcas</title>
+      <style>
+        :root { --bg:#0b1220; --fg:#d1d5db; --muted:#9ca3af; --card:#111827; --border:#1f2937; --accent:#3b82f6; }
+        body { margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); }
+        .wrap { max-width:900px; margin:0 auto; padding:16px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+        .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:8px 0; }
+        input, select, button { padding:8px; border-radius:8px; border:1px solid var(--border); background:#0f172a; color:var(--fg); }
+        input[type=number]{ width:110px; }
+        .btn { background:var(--accent); border-color:var(--accent); cursor:pointer; }
+        .status { margin-top:10px; min-height:1.4em; }
+        .ok { color:#34d399; } .err { color:#f87171; }
+      </style>
+    </head>
+    <body>
+      <div class=wrap>
+        <div class=card>
+          <h2>Panel de Marcas</h2>
+          <div class=row>
+            <label for=cab>Armario</label>
+            <select id=cab style="min-width:250px;"></select>
+            <button id=refresh>Refrescar</button>
+          </div>
+          <div class=row>
+            <label for=mid>ID</label>
+            <input id=mid type=text placeholder=m1 />
+            <label for=row>row</label>
+            <input id=row type=number min=0 />
+            <label for=col>col</label>
+            <input id=col type=number min=0 />
+            <label for=col>color</label>
+            <input id=color type=color value="#00ff80" />
+            <select id=on><option value=true>On</option><option value=false>Off</option></select>
+            <button class=btn id=send>Enviar</button>
+          </div>
+          <div id=status class=status></div>
+          <div class=row>
+            <button id=listar>Listar marcas</button>
+          </div>
+          <ul id=lista></ul>
+        </div>
+      </div>
+      <script>
+        async function loadCabs(){ const r=await fetch('/api/cabinets'); const d=await r.json(); const s=document.getElementById('cab'); s.innerHTML=''; (d.items||[]).forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=(c.alias?c.alias+' ['+c.id+']':c.id)+' @ '+c.url; o.setAttribute('data-r', c.row_len||0); o.setAttribute('data-c', c.col_len||0); s.appendChild(o); }); }
+        document.getElementById('refresh').onclick=loadCabs; loadCabs();
+        document.getElementById('send').onclick=async function(){ const st=document.getElementById('status'); st.className='status'; st.textContent='Enviando...'; try{ const cab=document.getElementById('cab').value; const mid=(document.getElementById('mid').value||'default'); const row=parseInt(document.getElementById('row').value); const col=parseInt(document.getElementById('col').value); const color=String(document.getElementById('color').value||''); const on=(document.getElementById('on').value==='true'); const res=await fetch('/api/mark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cabinet:cab,id:mid,row, col, color, on})}); const d=await res.json(); if(!res.ok||!d.ok) throw new Error(d.error||'Fallo'); st.className='status ok'; st.textContent='OK'; } catch(e){ const st=document.getElementById('status'); st.className='status err'; st.textContent='Error: '+(e.message||e);} }
+        document.getElementById('listar').onclick=async function(){ const cab=document.getElementById('cab').value; const ul=document.getElementById('lista'); ul.innerHTML='...'; try{ const r=await fetch('/api/cab_state?cabinet='+encodeURIComponent(cab)); const d=await r.json(); if(!r.ok) throw new Error(d.error||'Fallo'); ul.innerHTML=''; (d.marks||[]).forEach(m=>{ const li=document.createElement('li'); const b=document.createElement('button'); b.textContent='Eliminar'; b.onclick=async ()=>{ const x=await fetch('/api/mark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cabinet:cab,id:m.id,on:false})}); const j=await x.json(); if(!x.ok) alert(j.error||'Fallo'); else li.remove(); }; li.textContent=(m.id||'(id)')+' -> ('+m.row+','+m.col+') '+(m.color||''); li.appendChild(b); ul.appendChild(li); }); } catch(e){ ul.innerHTML='Error'; } }
+      </script>
+    </body>
+    </html>
+    """
+    return Response(html, mimetype="text/html")
+
+
+@app.get("/api/cab_state")
+def api_cab_state() -> Response:
+    cab = request.args.get("cabinet", type=str)
+    if not cab:
+        return jsonify({"error": "cabinet requerido"}), 400
+    meta = CABINETS.get(cab)
+    if not meta:
+        return jsonify({"error": "armario no registrado"}), 404
+    try:
+        req = urllib.request.Request(meta["url"].rstrip("/") + "/api/state", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return jsonify(data)
+    except Exception as ex:
+        return jsonify({"error": f"no se pudo consultar: {ex}"}), 502
