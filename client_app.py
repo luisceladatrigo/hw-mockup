@@ -38,9 +38,16 @@ from keycar_client.core.service import KeyCarClient
 
 app = Flask(__name__)
 
-# Estado deseado (en memoria) del orquestador por armario
-# Estructura: DESIRED[cabinet_id] = { "marks": { key -> {row,col,color,ts} } }
-# Donde key = f"r{row}c{col}" (coordenada como clave)
+# Estado deseado (en memoria) del orquestador por armario.
+# - Estructura: DESIRED[cabinet_id] = { "marks": { key -> {row,col,color,ts} } }
+# - key = f"r{row}c{col}" cuando no se especifica un id explicito.
+#
+# Notas de diseno:
+# - Este cliente actua como un pequeño orquestador local. La UI solo modifica
+#   este estado deseado y despues se empuja el "bitmap" completo al hw_server
+#   del armario seleccionado (POST /api/marks).
+# - Para facilitar pruebas, se evita dependencia de librerias externas en
+#   el camino critico de red; el envio se encapsula en KeyCarClient.
 DESIRED: Dict[str, Dict[str, Any]] = {}
 
 # Archivo de persistencia ligero (JSON) para la topología.
@@ -410,7 +417,13 @@ def api_cabinets_delete(cid: str) -> Response:
 # Nota: /api/trace eliminado del flujo. Usar /api/mark o /api/marks.
 @app.post("/api/mark")
 def api_mark() -> Response:
-    """Aplica ON/OFF mediante el core, manteniendo estado local y UI."""
+    """Aplica ON/OFF y sincroniza el estado con el hw_server.
+
+    Flujo:
+    1) Valida armario y payload; actualiza el estado deseado en memoria.
+    2) Construye la lista completa de marcas activas (bitmap).
+    3) Empuja ese bitmap a <armario.url>/api/marks a traves del core.
+    """
     payload = request.get_json(silent=True) or {}
     cabinet = str(payload.get("cabinet") or "").strip()
     if not cabinet:

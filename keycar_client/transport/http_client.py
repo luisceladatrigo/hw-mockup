@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""Transporte HTTP del cliente.
+
+Usa urllib de la libreria estandar para evitar dependencias externas.
+Incluye reintentos simples y conversion JSON.
+"""
+
 import json
 import time
 from typing import List, Dict, Any
@@ -13,10 +19,22 @@ from keycar_client.config import KeyCarConfig
 
 
 class HttpTransportClient:
+    """Cliente HTTP simple para hablar con un servicio remoto.
+
+    Nota: en este proyecto, set_on/set_off se dejan como placeholders
+    hasta definir los endpoints finales del orquestador. Para compatibilidad
+    inmediata con hw_server, se expone push_marks().
+    """
+
     def __init__(self, cfg: KeyCarConfig) -> None:
         self.cfg = cfg
 
     def _request(self, method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """Emite una peticion HTTP JSON y devuelve dict.
+
+        Lanza OrchestratorError ante HTTPError y TransportError ante fallos
+        de red tras agotar reintentos.
+        """
         url = self.cfg.base_url.rstrip("/") + path
         data = None
         if payload is not None:
@@ -34,7 +52,7 @@ class HttpTransportClient:
                         return {}
                     return json.loads(body.decode("utf-8"))
             except urllib.error.HTTPError as e:
-                # Pass through orchestrator-provided error payloads when possible
+                # Pasar detalle del destino cuando sea posible
                 try:
                     detail = e.read().decode("utf-8")
                 except Exception:
@@ -46,11 +64,11 @@ class HttpTransportClient:
         raise TransportError(str(last_err) if last_err else "transport error")
 
     def set_on(self, coords: List[Coord]) -> ApplyResult:
-        # Placeholder behavior: success count equals number of coords
+        # Placeholder: exito inmediato (alineado con desacople actual)
         return ApplyResult(ok_count=len(coords), fail_count=0, failures=[])
 
     def set_off(self, coords: List[Coord]) -> ApplyResult:
-        # Placeholder behavior mirroring set_on
+        # Placeholder: exito inmediato
         return ApplyResult(ok_count=len(coords), fail_count=0, failures=[])
 
     def health(self) -> HealthStatus:
@@ -58,10 +76,9 @@ class HttpTransportClient:
         ok = bool(res.get("ok", True))
         return HealthStatus(ok=ok, detail=str(res.get("detail", "")))
 
-    # New: push a full marks set to a hw_server compatible endpoint
+    # Compatibilidad con hw_server: POST /api/marks
     def push_marks(self, marks: List[Dict[str, Any]]) -> Dict[str, Any]:
         payload = {"marks": marks}
-        # hw_server expects POST /api/marks
         return self._request("POST", "/api/marks", payload)
 
 

@@ -13,7 +13,7 @@ Esqueleto mínimo para un proyecto iterativo. Ahora incluye dos apps Flask para 
 - Python 3.9+ (recomendado 3.11+)
 - Flask: `pip install flask`
 
-## Uso rápido
+## Uso rapido
 Escenario A: Un solo armario
 1) Terminal 1: `python hw_server.py` (usa por defecto `PORT=5001`, `ROW_LEN=3`, `COL_LEN=3`, `CABINET_ID="CAB"`)
 2) Terminal 2: `python client_app.py` (cliente/orquestador en `http://127.0.0.1:5000`)
@@ -82,4 +82,13 @@ curl -s -X POST http://127.0.0.1:5000/api/trace \
 ```
 
 ## Desarrollo
-- Iteraciones pequeñas. Mantener `CHANGELOG.md` y `docs/DEVLOG.md` al día.
+- Iteraciones pequenas. Mantener CHANGELOG.md y docs/DEVLOG.md al dia.
+
+### Etapas del proyecto
+- 0.1.0: Esqueleto Flask (cliente y servidor simulados)
+- 0.2.0: Desacople del cliente (SDK keycar_client) y compatibilidad push_marks(); hw_server con argparse para --host/--port/--id/...
+
+### Arquitectura breve
+- UI (client_app) -> Core SDK (KeyCarClient) -> Transporte HTTP -> hw_server
+- Mientras no exista un orquestador unico, push_marks() reenvia el bitmap completo a cada armario.
+

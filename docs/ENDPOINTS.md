@@ -65,7 +65,7 @@ Este documento recoge los endpoints HTTP del mock, con formatos de petición y r
 
 - POST `/api/mark`
   - Body: `{ "cabinet": "A", "id":"m1"?, "row":1, "col":2, "color":"#00ff00", "on":true }`
-  - Acción: actualiza el estado deseado en el orquestador y empuja el “bitmap” completo a `A/api/marks`.
+  - Accion: actualiza el estado deseado en el orquestador y empuja el bitmap completo a `A/api/marks`.
 
 ## Ejemplos curl
 
@@ -89,3 +89,11 @@ curl -s -X POST http://127.0.0.1:5000/api/trace \
   -H "Content-Type: application/json" \
   -d '{"cabinet":"A","command":{"on":false,"color":"red"}}'
 ```
+
+
+## Core SDK (keycar_client)
+
+Interfaz publica minima:
+- KeyCarClient.push_marks(marks) -> POST /api/marks al ase_url del cliente
+- KeyCarClient.push_marks_to(url, marks) -> POST directo a url/api/marks
+- KeyCarClient.set_on/off(coords) -> placeholders por ahora (se definiran con el orquestador)
