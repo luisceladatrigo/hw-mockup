@@ -37,6 +37,11 @@ from flask import Flask, jsonify, request, Response
 
 app = Flask(__name__)
 
+# Estado deseado (en memoria) del orquestador por armario
+# Estructura: DESIRED[cabinet_id] = { "marks": { key -> {row,col,color,ts} } }
+# Donde key = f"r{row}c{col}" (coordenada como clave)
+DESIRED: Dict[str, Dict[str, Any]] = {}
+
 # Archivo de persistencia ligero (JSON) para la topología.
 TOPOLOGY_FILE = os.environ.get("TOPOLOGY_FILE", "topology.json")
 
@@ -417,21 +422,21 @@ def api_mark() -> Response:
     meta = CABINETS.get(cabinet)
     if not meta:
         return jsonify({"error": "armario no registrado"}), 404
-    mid = str(payload.get("id") or "").strip() or f"m{int(time.time()*1000)}"
     on = bool(payload.get("on", True))
-    # Actualizar desired del orquestador
+    # Actualizar desired del orquestador (clave por coordenada)
     cab = DESIRED.setdefault(cabinet, {"marks": {}})
+    try:
+        row = int(payload.get("row")); col = int(payload.get("col"))
+    except Exception:
+        return jsonify({"error": "row/col requeridos"}), 400
+    key = str(payload.get("id") or "").strip() or f"r{row}c{col}"
     if not on:
-        cab["marks"].pop(mid, None)
+        cab["marks"].pop(key, None)
     else:
-        try:
-            row = int(payload.get("row")); col = int(payload.get("col"))
-        except Exception:
-            return jsonify({"error": "row/col requeridos"}), 400
         color = str(payload.get("color") or "").strip()
         if not color:
             return jsonify({"error": "color requerido"}), 400
-        cab["marks"][mid] = {"row": row, "col": col, "color": color, "ts": 0}
+        cab["marks"][key] = {"row": row, "col": col, "color": color, "ts": 0}
     # Empujar estado completo al hw_server
     marks = [ {"id": k, **v} for k, v in cab["marks"].items() ]
     url = meta["url"] + "/api/marks"
@@ -462,10 +467,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-# Estado deseado del orquestador (en memoria): por cabinet
-# desired[cabinet_id] = { "marks": { id -> {row,col,color,ts} } }
-DESIRED: Dict[str, Dict[str, Any]] = {}
-
 
 @app.get("/panel")
 def marks_panel() -> Response:

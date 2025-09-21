@@ -117,9 +117,9 @@ class MarksState:
         self.marks.clear()
         for it in items:
             try:
-                mid = str(it.get("id") or "").strip() or f"m{int(time.time())}"
                 row = int(it.get("row"))
                 col = int(it.get("col"))
+                mid = str(it.get("id") or "").strip() or f"r{row}c{col}"
                 color = str(it.get("color") or "")
                 if not (0 <= row < ROW_LEN and 0 <= col < COL_LEN):
                     continue
@@ -384,16 +384,22 @@ def api_mark() -> Response:
     on=true -> set/update; on=false -> delete id.
     """
     payload = request.get_json(silent=True) or {}
-    mid = str(payload.get("id") or "").strip() or "default"
     on = bool(payload.get("on", True))
-    if not on:
-        STATE.del_mark(mid)
-        return jsonify({"ok": True})
     try:
         row = int(payload.get("row"))
         col = int(payload.get("col"))
     except Exception:
+        if not on:
+            mid_only = str(payload.get("id") or "").strip()
+            if not mid_only:
+                return jsonify({"error": "id o (row,col) requeridos"}), 400
+            STATE.del_mark(mid_only)
+            return jsonify({"ok": True})
         return jsonify({"error": "row/col requeridos"}), 400
+    mid = str(payload.get("id") or "").strip() or f"r{row}c{col}"
+    if not on:
+        STATE.del_mark(mid)
+        return jsonify({"ok": True})
     if not (0 <= row < ROW_LEN) or not (0 <= col < COL_LEN):
         return jsonify({"error": "row/col fuera de rango"}), 400
     color = normalize_color(payload.get("color"))
